@@ -1,17 +1,88 @@
-# Hashinal Wallet Connect - Test App
+# Test Application for hashinal-wc Fixes
 
-This is a test application for the Hashinal Wallet Connect SDK, specifically testing the node account ID fix.
+This application tests critical fixes and improvements made to the `@hashgraphonline/hashinal-wc` SDK.
 
-## Quick Start
+## Overview
 
-### 1. Get a WalletConnect Project ID
+This test suite validates three primary fixes:
 
-1. Visit [WalletConnect Cloud](https://cloud.walletconnect.com)
-2. Sign in or create an account
-3. Create a new project
-4. Copy your Project ID
+1. **Signer null check ordering** - Prevents crashes when signer is undefined
+2. **Automatic node account ID configuration** - Eliminates manual node ID setup
+3. **Multi-signature transaction support** - Upgraded to HWC 2.0.4-canary with frozen transaction signing fixes
 
-### 2. Set Up Environment Variables
+## Fixes Being Tested
+
+### 1. Signer Null Check Fix
+
+**Location:** `hashinal-wc/src/index.ts:221-223`
+
+The signer instance is now validated before use, preventing null reference errors.
+
+**Before:**
+```typescript
+const signer = this.dAppConnector.signers.find(...);
+// signer used here without validation
+const network = signer.getNetwork(); // Could crash if signer is null
+```
+
+**After:**
+```typescript
+const signer = this.dAppConnector.signers.find(...);
+
+if (!signer) {
+  throw new Error('No signer available. Please ensure wallet is connected.');
+}
+
+const network = signer.getNetwork(); // Safe to use
+```
+
+### 2. Node Account ID Auto-Configuration
+
+**Location:** `hashinal-wc/src/index.ts:228-244`
+
+Transactions previously failed with:
+```
+nodeAccountId must be set or client must be provided with freezeWith
+```
+
+The SDK now automatically extracts and configures node account IDs from the signer's network configuration:
+
+```typescript
+const nodeAccountIds = tx.nodeAccountIds || [];
+if (nodeAccountIds.length === 0) {
+  const network = signer.getNetwork();
+  const networkNodeIds = Object.values(network)
+    .filter((value) => value instanceof AccountId)
+    .slice(0, HashinalsWalletConnectSDK.MAX_NODE_ACCOUNT_IDS);
+
+  tx.setNodeAccountIds(networkNodeIds);
+}
+```
+
+The magic number `3` has been replaced with the constant `MAX_NODE_ACCOUNT_IDS` for maintainability.
+
+### 3. Multi-Signature Support
+
+**Version:** HWC 2.0.4-canary.3ca04e9.0
+
+Includes the fix from [PR #608](https://github.com/hashgraph/hedera-wallet-connect/pull/608) which resolves a critical bug in frozen transaction signing for multi-signature workflows.
+
+## Setup
+
+### Prerequisites
+
+- Node.js 18 or higher
+- pnpm 8 or higher
+- WalletConnect Project ID from [cloud.walletconnect.com](https://cloud.walletconnect.com)
+- Hedera testnet account with at least 5 HBAR
+
+### Installation
+
+```bash
+pnpm install
+```
+
+### Configuration
 
 Create a `.env` file in the project root:
 
@@ -19,80 +90,162 @@ Create a `.env` file in the project root:
 VITE_WALLETCONNECT_PROJECT_ID=your_project_id_here
 ```
 
-Replace `your_project_id_here` with your actual Project ID from step 1.
-
-### 3. Install Dependencies
-
-```bash
-pnpm install
-```
-
-### 4. Run the Dev Server
+### Running the Application
 
 ```bash
 pnpm dev
 ```
 
-### 5. Connect Your Wallet
+The application will be available at http://localhost:5173
 
-1. Click "Connect Wallet" in the app
-2. Select your Hedera wallet (HashPack, Blade, etc.)
-3. Approve the connection
+## Test Suite
 
-## What This Tests
+### Automated Tests
 
-This app demonstrates the fix for the error:
-```
-"nodeAccountId must be set or client must be provided with freezeWith"
-```
+The test suite includes the following test categories:
 
-**Before the fix:** You had to manually set node account IDs on every transaction.
+**Connection Tests**
+- Account information retrieval
+- Balance fetching
+- Network detection
 
-**After the fix:** The SDK automatically uses nodes from the wallet's network configuration.
+**Signer Validation Tests**
+- Null check enforcement
+- Signer availability verification
 
-## Features Tested
+**Node Account ID Tests**
+- Automatic node configuration via `submitMessageToTopic()`
+- Manual transaction creation without node IDs
+- Network-based node selection
 
-- ✅ Wallet connection via WalletConnect
-- ✅ Automatic node account ID handling
-- ✅ Topic message submission (`submitMessageToTopic()`)
-- ✅ Manual transaction execution (`executeTransaction()`)
+**Error Handling Tests**
+- Invalid topic ID handling
+- User-friendly error messages
+- Transaction error wrapping
 
-## Troubleshooting
+**Mirror Node Tests**
+- Account data retrieval
+- Token balance queries
+- NFT listing
 
-### Error: "401 Unauthorized"
-- Your WalletConnect Project ID is invalid or missing
-- Make sure your `.env` file has the correct `VITE_WALLETCONNECT_PROJECT_ID`
-- Restart your dev server after creating/updating `.env`
+**Message Fetching Tests**
+- Topic message retrieval
+- Message pagination
 
-### Error: "Cannot convert undefined or null to object"
-- Usually happens when PROJECT_ID is invalid
-- Check that your `.env` file is in the project root
-- Ensure you've restarted the dev server after creating `.env`
+**Network Prefix Tests**
+- Mainnet/testnet detection
+- Correct mirror node endpoint selection
 
-### Wallet Not Connecting
-- Make sure you have a Hedera wallet installed (HashPack, Blade, etc.)
-- Check that your wallet supports WalletConnect v2
-- Try disconnecting and reconnecting
+### Running Tests
+
+1. Navigate to the Connection tab and connect your wallet
+2. Switch to the Tests tab
+3. Enter a valid topic ID (or create a new topic)
+4. Click "Run All Tests"
+5. View results in the Results tab
+
+Results can be exported as Markdown for documentation purposes.
+
+### Manual Testing
+
+The Manual Tests tab provides individual controls for:
+
+- Topic creation
+- Message submission
+- Transaction execution
+
+This allows for testing specific scenarios and edge cases.
 
 ## Project Structure
 
 ```
 test-hashinal-wc-fix/
 ├── src/
-│   ├── App.jsx          # Main application component
-│   └── main.jsx         # Entry point
-├── .env                 # Environment variables (create this)
-├── .env.example         # Example env file
-└── package.json         # Dependencies
+│   ├── App.jsx              # Original test interface
+│   ├── ImprovedApp.jsx      # Enhanced test interface with automation
+│   ├── testRunner.js        # Automated test framework
+│   ├── testUtils.js         # Testing utilities and helpers
+│   ├── ErrorBoundary.jsx    # React error boundary component
+│   └── main.jsx             # Application entry point
+├── TEST_SCENARIOS.md        # Detailed test scenarios
+├── TESTING_GUIDE.md         # Comprehensive testing documentation
+├── README.md                # This file
+└── package.json
 ```
+
+## Test Results Example
+
+```
+Test Summary
+Total Tests: 15
+Passed: 15
+Failed: 0
+Duration: 3524ms
+Success Rate: 100.0%
+```
+
+## Validation Matrix
+
+| Component | Status | Test Method | Code Location |
+|-----------|--------|-------------|---------------|
+| Signer Null Check | Fixed | `testSignerValidation()` | index.ts:221-223 |
+| Node Auto-Config | Fixed | `testNodeAccountIDs()` | index.ts:228-244 |
+| Multi-Sig Support | Fixed | Version verification | HWC 2.0.4-canary |
+| Magic Number Constant | Fixed | Code inspection | index.ts:66 |
+| Error Messages | Improved | `testErrorHandling()` | Various |
+
+## Troubleshooting
+
+### Connection Issues
+
+**Wallet not connecting**
+- Verify WalletConnect Project ID is correct in `.env`
+- Restart development server after changing `.env`
+- Check that wallet supports WalletConnect v2
+- Disable browser popup blockers
+
+**"No signer available" error**
+- Reconnect wallet through the UI
+- Use the "Validate Connection" button to check state
+- Review browser console for detailed error information
+
+**"401 Unauthorized" error**
+- WalletConnect Project ID is invalid or missing
+- Recreate `.env` file with valid Project ID
+- Restart development server
+
+### Test Failures
+
+**Tests timing out**
+- Verify testnet network connectivity
+- Check account has sufficient HBAR balance
+- Ensure topic ID exists and is accessible
+
+**"nodeAccountId must be set" error**
+- This indicates the fix was not properly applied
+- Verify yalc package is up to date
+- Rebuild hashinal-wc package
 
 ## Dependencies
 
-- `@hashgraphonline/hashinal-wc` - Hashinal Wallet Connect SDK
-- `@hashgraph/sdk` - Hedera SDK
-- `react` - React framework
-- `vite` - Build tool
+Key dependencies and their versions:
+
+- `@hashgraphonline/hashinal-wc`: 1.0.119
+- `@hashgraph/hedera-wallet-connect`: 2.0.4-canary.3ca04e9.0
+- `@hashgraph/sdk`: ^2.76.0
+- `react`: ^19.1.1
+
+## Documentation
+
+- [TESTING_GUIDE.md](./TESTING_GUIDE.md) - Complete testing procedures
+- [TEST_SCENARIOS.md](./TEST_SCENARIOS.md) - Detailed test case documentation
+- [Hashinal WC Documentation](https://docs.hashgraphonline.com)
+- [Hedera Documentation](https://docs.hedera.com)
+
+## Contributing
+
+Report issues at: https://github.com/hashgraphonline/hashinal-wc/issues
 
 ## License
 
-See parent repository for license information.
+Apache-2.0
